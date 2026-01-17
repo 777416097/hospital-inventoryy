@@ -16,7 +16,7 @@ app.add_middleware(
 )
 
 # رابط الاتصال من Supabase (تأكد من وضع كلمة المرور الصحيحة)
-DB_URL = "postgresql://postgres:[RhN/fbK87TnVYggggggg]@db.xxxx.supabase.co:5432/postgres"
+DB_URL = "postgresql://postgres:[Hospital202620252024]@db.xxxx.supabase.co:5432/postgres"
 
 class Asset(BaseModel):
     name: str
@@ -93,3 +93,4 @@ def restore_item(item_id: int):
     conn.close()
 
     return {"message": "Restored"}
+
