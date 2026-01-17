@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام جرد المستشفى الذكي - PostgreSQL</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
+    <style>
+        :root { --primary: #2c3e50; --secondary: #3498db; --success: #27ae60; --danger: #e74c3c; --warning: #f1c40f; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #f4f7f6; margin: 0; padding: 15px; direction: rtl; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: var(--primary); border-bottom: 2px solid var(--secondary); padding-bottom: 10px; }
+        
+        /* تصميم الحقول */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 10px; }
+        .form-group { display: flex; flex-direction: column; }
+        label { font-weight: bold; margin-bottom: 5px; font-size: 0.9em; }
+        input, select { padding: 12px; border: 1px solid #ddd; border-radius: 8px; outline: none; }
+        
+        /* الأزرار */
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        button { border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; flex: 1; min-width: 120px; transition: 0.3s; }
+        .btn-save { background: var(--secondary); }
+        .btn-excel { background: var(--success); }
+        .btn-trash { background: var(--primary); }
+        
+        /* الكاميرا والجدول */
+        #reader { width: 100%; max-width: 400px; margin: 10px auto; border-radius: 10px; display: none; border: 3px solid var(--secondary); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #eee; padding: 12px; text-align: center; }
+        th { background: var(--primary); color: white; }
+        .asset-img { width: 50px; height: 50px; object-fit: cover; border-radius: 5px; }
+
+        /* نافذة سلة المهملات */
+        .modal { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); width:90%; max-width:600px; height:70%; background:white; z-index:1000; box-shadow:0 0 30px rgba(0,0,0,0.3); padding:20px; border-radius:15px; overflow-y:auto; }
+        .overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:999; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🏥 إدارة عهدة المستشفى (PostgreSQL)</h2>
+
+    <div id="reader"></div>
+
+    <div class="form-grid">
+        <div class="form-group">
+            <label>اسم الصنف</label>
+            <input type="text" id="assetName" placeholder="مثلاً: جهاز ضغط">
+        </div>
+        <div class="form-group">
+            <label>الباركود (المس للمسح)</label>
+            <input type="text" id="assetBarcode" onfocus="startScanner()" placeholder="المس لفتح الكاميرا">
+        </div>
+        <div class="form-group">
+            <label>القسم</label>
+            <input type="text" id="assetDept" placeholder="المختبر">
+        </div>
+        <div class="form-group">
+            <label>الكمية</label>
+            <input type="number" id="assetQty" value="1">
+        </div>
+        <div class="form-group">
+            <label>الحالة</label>
+            <select id="assetStatus">
+                <option>جديد</option>
+                <option>مستعمل</option>
+                <option>تالف</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>صورة</label>
+            <input type="file" id="assetImage" accept="image/*">
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn-save" onclick="handleSave()">💾 حفظ في السحابة</button>
+        <button class="btn-excel" onclick="exportToExcel()">📊 إكسل</button>
+        <button class="btn-trash" onclick="openTrash()">🗑️ المحذوفات</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>الصورة</th>
+                <th>الصنف</th>
+                <th>الكمية</th>
+                <th>إجراء</th>
+            </tr>
+        </thead>
+        <tbody id="mainTableBody"></tbody>
+    </table>
+</div>
+
+<div class="overlay" id="overlay" onclick="closeTrash()"></div>
+<div class="modal" id="trashModal">
+    <h3>♻️ سلة المهملات (استرجاع)</h3>
+    <table style="width:100%">
+        <thead>
+            <tr>
+                <th>الصنف</th>
+                <th>إجراء</th>
+            </tr>
+        </thead>
+        <tbody id="trashTableBody"></tbody>
+    </table>
+    <button style="background:var(--danger); margin-top:20px;" onclick="closeTrash()">إغلاق</button>
+</div>
+
+<script>
+    // ⚠️ استبدل هذا الرابط برابط الـ Render الخاص بك
+    const API_URL = "https://رابط_خادم_ريندر_الخاص_بك.onrender.com";
+
+    let html5QrCode;
+
+    // --- 1. الكاميرا ---
+    async function startScanner() {
+        const reader = document.getElementById('reader');
+        reader.style.display = 'block';
+        html5QrCode = new Html5Qrcode("reader");
+        html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+            document.getElementById('assetBarcode').value = text;
+            html5QrCode.stop();
+            reader.style.display = 'none';
+        }).catch(() => alert("يرجى السماح بصلاحية الكاميرا"));
+    }
+
+    // --- 2. ضغط الصورة وحفظها ---
+    async function handleSave() {
+        const file = document.getElementById('assetImage').files[0];
+        let base64Img = "";
+        
+        if(file) {
+            const reader = new FileReader();
+            base64Img = await new Promise(r => {
+                reader.onload = e => r(e.target.result);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        const data = {
+            name: document.getElementById('assetName').value,
+            barcode: document.getElementById('assetBarcode').value,
+            dept: document.getElementById('assetDept').value,
+            qty: parseInt(document.getElementById('assetQty').value),
+            status: document.getElementById('assetStatus').value,
+            image: base64Img
+        };
+
+        const res = await fetch(`${API_URL}/add`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        if(res.ok) {
+            alert("تم الحفظ");
+            location.reload();
+        } else {
+            alert("خطأ: ربما الباركود مكرر!");
+        }
+    }
+
+    // --- 3. جلب البيانات للجدول الرئيسي ---
+    async function loadMainData() {
+        const res = await fetch(`${API_URL}/assets`);
+        const assets = await res.json();
+        const tbody = document.getElementById('mainTableBody');
+        tbody.innerHTML = assets.map(a => `
+            <tr>
+                <td><img class="asset-img" src="${a.image_url || 'https://via.placeholder.com/50'}"></td>
+                <td>${a.name}</td>
+                <td>${a.qty}</td>
+                <td><button style="background:var(--danger); padding:5px" onclick="moveToTrash(${a.id})">🗑️</button></td>
+            </tr>
+        `).join('');
+    }
+
+    // --- 4. سلة المهملات (حذف واسترجاع) ---
+    async function moveToTrash(id) {
+        if(confirm("نقل لسلة المهملات؟")) {
+            await fetch(`${API_URL}/delete/${id}`, { method: 'PUT' });
+            loadMainData();
+        }
+    }
+
+    async function openTrash() {
+        document.getElementById('trashModal').style.display = 'block';
+        document.getElementById('overlay').style.display = 'block';
+        const res = await fetch(`${API_URL}/trash`);
+        const trash = await res.json();
+        const tbody = document.getElementById('trashTableBody');
+        tbody.innerHTML = trash.map(a => `
+            <tr>
+                <td>${a.name}</td>
+                <td><button style="background:var(--success); padding:5px" onclick="restoreItem(${a.id})">♻️ استرجاع</button></td>
+            </tr>
+        `).join('');
+    }
+
+    async function restoreItem(id) {
+        await fetch(`${API_URL}/restore/${id}`, { method: 'PUT' });
+        closeTrash();
+        loadMainData();
+    }
+
+    function closeTrash() {
+        document.getElementById('trashModal').style.display = 'none';
+        document.getElementById('overlay').style.display = 'none';
+    }
+
+    // تشغيل عند التحميل
+    loadMainData();
+</script>
+</body>
+</html>
