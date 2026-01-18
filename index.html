@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام جرد المستشفى الذكي - تصدير الصور</title>
+    <title>نظام جرد المستشفى الذكي - مرتبط بالسحابة</title>
     
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
@@ -12,7 +12,7 @@
     
     <style>
         :root { --primary: #2c3e50; --secondary: #3498db; --success: #27ae60; --light: #f4f7f6; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--light); margin: 0; padding: 15px; direction: rtl; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--light); margin: 0; padding: 15px; direction: rtl; }
         .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
         h2 { text-align: center; color: var(--primary); border-bottom: 2px solid var(--secondary); padding-bottom: 10px; }
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px; }
@@ -20,27 +20,27 @@
         label { font-weight: bold; font-size: 13px; color: #555; display: block; margin-bottom: 5px; }
         input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
         .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        button { padding: 15px; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; transition: 0.3s; }
+        button { padding: 15px; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn-scan { background: var(--secondary); }
         .btn-photo { background: #8e44ad; }
         .btn-excel { background: var(--success); grid-column: span 2; }
         .btn-save { background: var(--primary); grid-column: span 2; font-size: 18px; }
         #reader, #camera-preview { width: 100%; border-radius: 10px; display: none; margin-top: 10px; background: #000; }
         #photo-preview { width: 100px; height: 100px; object-fit: cover; border-radius: 10px; display: none; margin: 10px auto; border: 2px solid var(--secondary); }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .table-container { margin-top: 20px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
         th, td { border: 1px solid #eee; padding: 10px; text-align: center; font-size: 13px; }
         th { background: var(--primary); color: white; }
+        .img-cell { width: 50px; height: 50px; object-fit: cover; border-radius: 5px; }
     </style>
 </head>
-<body>
-
-<div class="container">
-    <h2>🏥 نظام جرد العهدة (نسخة الصور)</h2>
+<body onload="fetchDataFromSupabase()"> <div class="container">
+    <h2><i class="fas fa-hospital"></i> جرد العهدة (مزامنة سحابية)</h2>
 
     <div class="form-grid">
         <div class="full-width">
             <label>اسم الصنف</label>
-            <input type="text" id="name" placeholder="جهاز تخطيط قلب">
+            <input type="text" id="name" placeholder="اسم الجهاز">
         </div>
         <div><label>القسم</label><input type="text" id="dept"></div>
         <div><label>الكمية</label><input type="number" id="qty" value="1"></div>
@@ -60,14 +60,16 @@
     <div class="btn-group">
         <button class="btn-scan" onclick="startScanner()"><i class="fas fa-barcode"></i> مسح باركود</button>
         <button class="btn-photo" onclick="takePhoto()"><i class="fas fa-camera"></i> تصوير الصنف</button>
-        <button class="btn-excel" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> تصدير إكسل مع الصور</button>
-        <button class="btn-save" onclick="saveData()"><i class="fas fa-save"></i> حفظ في السحابة</button>
+        <button class="btn-save" onclick="saveData()"><i class="fas fa-cloud-upload-alt"></i> حفظ في السحابة</button>
+        <button class="btn-excel" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> تصدير إكسل بالصور</button>
     </div>
 
-    <table id="inventoryTable">
-        <thead><tr><th>الصورة</th><th>الصنف</th><th>القسم</th><th>الحالة</th></tr></thead>
-        <tbody></tbody>
-    </table>
+    <div class="table-container">
+        <table id="inventoryTable">
+            <thead><tr><th>الصورة</th><th>الصنف</th><th>القسم</th><th>الحالة</th></tr></thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
 </div>
 
 <script>
@@ -76,9 +78,33 @@
 
     let html5QrCode;
     let cameraStream;
-    let sessionData = []; // لتخزين البيانات محلياً للتصدير
+    let allAssets = []; // سيحتوي على جميع البيانات من القاعدة
 
-    // 1. مسح الباركود
+    // 1. جلب البيانات من السحابة فور فتح الصفحة
+    async function fetchDataFromSupabase() {
+        try {
+            const res = await fetch(`${SB_URL}/rest/v1/hospital_assets?select=*&order=created_at.desc`, {
+                headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
+            });
+            const data = await res.json();
+            allAssets = data;
+            renderTable(data);
+        } catch (e) { console.error("خطأ في جلب البيانات", e); }
+    }
+
+    function renderTable(data) {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = data.map(item => `
+            <tr>
+                <td><img src="${item.image_url || 'https://via.placeholder.com/50'}" class="img-cell"></td>
+                <td>${item.name}</td>
+                <td>${item.dept}</td>
+                <td>${item.status}</td>
+            </tr>
+        `).join('');
+    }
+
+    // 2. الكاميرا والباركود
     function startScanner() {
         const reader = document.getElementById('reader');
         reader.style.display = 'block';
@@ -87,10 +113,9 @@
             document.getElementById('barcode').value = text;
             html5QrCode.stop();
             reader.style.display = 'none';
-        }).catch(err => alert("يرجى السماح بالكاميرا"));
+        });
     }
 
-    // 2. التقاط صورة الصنف
     async function takePhoto() {
         const video = document.getElementById('camera-preview');
         const img = document.getElementById('photo-preview');
@@ -100,17 +125,17 @@
             video.srcObject = cameraStream;
         } else {
             const canvas = document.createElement('canvas');
-            canvas.width = 400; // حجم مناسب للإكسل
+            canvas.width = 400;
             canvas.height = (video.videoHeight / video.videoWidth) * 400;
             canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-            img.src = canvas.toDataURL('image/jpeg', 0.7);
+            img.src = canvas.toDataURL('image/jpeg', 0.6);
             img.style.display = 'block';
             cameraStream.getTracks().forEach(t => t.stop());
             video.style.display = 'none';
         }
     }
 
-    // 3. الحفظ في سوبابيس
+    // 3. حفظ البيانات وإعادة تحميل الجدول
     async function saveData() {
         const data = {
             name: document.getElementById('name').value,
@@ -118,11 +143,10 @@
             qty: parseInt(document.getElementById('qty').value),
             status: document.getElementById('status').value,
             barcode: document.getElementById('barcode').value,
-            image_url: document.getElementById('photo-preview').src || null,
-            is_deleted: false
+            image_url: document.getElementById('photo-preview').src.startsWith('data') ? document.getElementById('photo-preview').src : null
         };
 
-        if(!data.name || !data.barcode) return alert("الاسم والباركود مطلوبان!");
+        if(!data.name) return alert("الاسم مطلوب!");
 
         try {
             const res = await fetch(`${SB_URL}/rest/v1/hospital_assets`, {
@@ -132,59 +156,47 @@
             });
 
             if (res.ok) {
-                alert("✅ تم الحفظ بنجاح!");
-                sessionData.push(data); // أضف للذاكرة للتصدير
-                updateTable(data);
-                clearInputs();
+                alert("✅ تم الحفظ في السحابة");
+                fetchDataFromSupabase(); // تحديث الجدول فوراً بعد الحفظ
+                resetInputs();
             } else {
-                alert("❌ خطأ: قد يكون الباركود مكرر!");
+                alert("❌ فشل الحفظ (تأكد من الباركود)");
             }
         } catch (e) { alert("❌ خطأ اتصال"); }
     }
 
-    // 4. التصدير الحقيقي لملف الإكسل مع الصور (ExcelJS)
+    // 4. تصدير إكسل (يسحب من البيانات الموجودة في السحابة)
     async function exportToExcel() {
-        if (sessionData.length === 0) return alert("لا توجد بيانات جديدة لتصديرها!");
-
+        if (allAssets.length === 0) return alert("لا توجد بيانات لتصديرها!");
         const workbook = new ExcelJS.Workbook();
-        const sheet = workbook.addWorksheet('جرد المستشفى');
+        const sheet = workbook.addWorksheet('الجرد العام');
 
         sheet.columns = [
             { header: 'الصورة', key: 'img', width: 15 },
-            { header: 'اسم الصنف', key: 'name', width: 25 },
+            { header: 'الصنف', key: 'name', width: 25 },
             { header: 'الباركود', key: 'barcode', width: 20 },
             { header: 'القسم', key: 'dept', width: 15 },
             { header: 'الكمية', key: 'qty', width: 10 },
             { header: 'الحالة', key: 'status', width: 15 }
         ];
 
-        for (let i = 0; i < sessionData.length; i++) {
-            const item = sessionData[i];
+        for (let i = 0; i < allAssets.length; i++) {
+            const item = allAssets[i];
             const row = sheet.addRow(item);
-            row.height = 70; // ارتفاع الصف ليناسب الصورة
-
-            if (item.image_url && item.image_url.startsWith('data:image')) {
-                const imgId = workbook.addImage({
-                    base64: item.image_url,
-                    extension: 'jpeg',
-                });
-                sheet.addImage(imgId, {
-                    tl: { col: 0, row: i + 1 },
-                    ext: { width: 80, height: 80 }
-                });
+            row.height = 60;
+            if (item.image_url) {
+                try {
+                    const imgId = workbook.addImage({ base64: item.image_url, extension: 'jpeg' });
+                    sheet.addImage(imgId, { tl: { col: 0, row: i + 1 }, ext: { width: 70, height: 70 } });
+                } catch(e) {}
             }
         }
 
         const buffer = await workbook.xlsx.writeBuffer();
-        saveAs(new Blob([buffer]), `Hospital_Inventory_${new Date().toLocaleDateString()}.xlsx`);
+        saveAs(new Blob([buffer]), "Inventory_Full_Report.xlsx");
     }
 
-    function updateTable(d) {
-        const row = `<tr><td><img src="${d.image_url}" width="50"></td><td>${d.name}</td><td>${d.dept}</td><td>${d.status}</td></tr>`;
-        document.querySelector("#inventoryTable tbody").innerHTML += row;
-    }
-
-    function clearInputs() {
+    function resetInputs() {
         document.getElementById('name').value = '';
         document.getElementById('barcode').value = '';
         document.getElementById('photo-preview').style.display = 'none';
