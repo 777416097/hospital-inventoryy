@@ -37,8 +37,6 @@
         .actions { display: flex; gap: 5px; justify-content: center; }
         .btn-edit { background: var(--warning); color: #000; padding: 6px; }
         .btn-delete { background: var(--danger); padding: 6px; }
-        .btn-restore { background: var(--success); padding: 6px; }
-        .archived-row { opacity: 0.7; background-color: #f9f9f9; }
     </style>
 </head>
 <body onload="fetchDataFromSupabase()"> 
@@ -72,20 +70,13 @@
         <button class="btn-photo" onclick="takePhoto()"><i class="fas fa-camera"></i> تصوير الصنف</button>
         <button id="btn-save" class="btn-save" onclick="saveData()"><i class="fas fa-plus"></i> إضافة صنف جديد</button>
         <button id="btn-update" class="btn-update" onclick="updateData()"><i class="fas fa-check"></i> حفظ التعديلات</button>
-        <button class="btn-excel" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> تصدير إكسل</button>
+        <button class="btn-excel" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> تصدير إكسل بالصور</button>
     </div>
 
     <div class="table-container">
         <table>
-            <thead><tr><th>الصورة</th><th>الصنف</th><th>القسم</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+            <thead><tr><th>الصورة</th><th>الصنف</th><th>القسم</th><th>الكمية</th><th>الحالة</th><th>إجراءات</th></tr></thead>
             <tbody id="tableBody"></tbody>
-        </table>
-    </div>
-
-    <h3><i class="fas fa-archive"></i> الأرشيف (الأصناف المحذوفة)</h3>
-    <div class="table-container">
-        <table>
-            <tbody id="archiveBody"></tbody>
         </table>
     </div>
 </div>
@@ -97,7 +88,6 @@
 
     let html5QrCode, cameraStream, allAssets = [];
 
-    // جلب البيانات مع إضافة شرط (is_archived) إذا كان متوفراً في القاعدة، أو المحاكاة برمجياً
     async function fetchDataFromSupabase() {
         try {
             const res = await fetch(`${SB_URL}/rest/v1/hospital_assets?select=*&order=created_at.desc`, { headers: HEADERS });
@@ -108,15 +98,12 @@
 
     function renderTables() {
         const tbody = document.getElementById('tableBody');
-        const archiveBody = document.getElementById('archiveBody');
-        
-        // ملاحظة: هنا سنعتمد على حقل 'status' كـ "محذوف" مؤقتاً أو يمكنك إضافة عمود is_deleted في Supabase
-        // للتبسيط، سأعرض كل البيانات في الجدول الرئيسي حالياً، وعند الحذف يتم الحذف الفعلي أو التحديث
         tbody.innerHTML = allAssets.map(item => `
             <tr>
                 <td><img src="${item.image_url || 'https://via.placeholder.com/50'}" class="img-cell"></td>
                 <td>${item.name}</td>
                 <td>${item.dept}</td>
+                <td>${item.qty}</td>
                 <td>${item.status}</td>
                 <td class="actions">
                     <button class="btn-edit" onclick='prepareEdit(${JSON.stringify(item)})'><i class="fas fa-edit"></i></button>
@@ -126,24 +113,14 @@
         `).join('');
     }
 
-    // وظيفة الحذف الفعلية
     async function deleteItem(id) {
         if(!confirm("هل أنت متأكد من حذف هذا الصنف؟")) return;
         try {
-            const res = await fetch(`${SB_URL}/rest/v1/hospital_assets?id=eq.${id}`, {
-                method: 'DELETE',
-                headers: HEADERS
-            });
-            if(res.ok) {
-                alert("✅ تم الحذف بنجاح");
-                fetchDataFromSupabase();
-            } else {
-                alert("❌ فشل الحذف: " + res.statusText);
-            }
-        } catch (e) { alert("❌ خطأ في الاتصال"); }
+            const res = await fetch(`${SB_URL}/rest/v1/hospital_assets?id=eq.${id}`, { method: 'DELETE', headers: HEADERS });
+            if(res.ok) { alert("✅ تم الحذف"); fetchDataFromSupabase(); }
+        } catch (e) { alert("❌ خطأ اتصال"); }
     }
 
-    // وظيفة التعديل
     function prepareEdit(item) {
         document.getElementById('edit-id').value = item.id;
         document.getElementById('name').value = item.name;
@@ -162,30 +139,13 @@
 
     async function updateData() {
         const id = document.getElementById('edit-id').value;
-        const data = {
-            name: document.getElementById('name').value,
-            dept: document.getElementById('dept').value,
-            qty: parseInt(document.getElementById('qty').value),
-            status: document.getElementById('status').value,
-            barcode: document.getElementById('barcode').value,
-            image_url: document.getElementById('photo-preview').src.startsWith('data') ? document.getElementById('photo-preview').src : null
-        };
-
+        const data = getFormData();
         try {
-            const res = await fetch(`${SB_URL}/rest/v1/hospital_assets?id=eq.${id}`, {
-                method: 'PATCH',
-                headers: HEADERS,
-                body: JSON.stringify(data)
-            });
-            if(res.ok) {
-                alert("✅ تم التحديث");
-                fetchDataFromSupabase();
-                resetInputs();
-            }
+            const res = await fetch(`${SB_URL}/rest/v1/hospital_assets?id=eq.${id}`, { method: 'PATCH', headers: HEADERS, body: JSON.stringify(data) });
+            if(res.ok) { alert("✅ تم التحديث"); fetchDataFromSupabase(); resetInputs(); }
         } catch (e) { alert("❌ خطأ تحديث"); }
     }
 
-    // وظائف الكاميرا والباركود (كما هي)
     function startScanner() {
         const reader = document.getElementById('reader');
         reader.style.display = 'block';
@@ -214,15 +174,19 @@
         }
     }
 
-    async function saveData() {
-        const data = {
+    function getFormData() {
+        return {
             name: document.getElementById('name').value,
             dept: document.getElementById('dept').value,
             qty: parseInt(document.getElementById('qty').value),
             status: document.getElementById('status').value,
             barcode: document.getElementById('barcode').value,
-            image_url: document.getElementById('photo-preview').src.startsWith('data') ? document.getElementById('photo-preview').src : null
+            image_url: document.getElementById('photo-preview').src.startsWith('data') ? document.getElementById('photo-preview').src : (document.getElementById('photo-preview').style.display === 'block' ? document.getElementById('photo-preview').src : null)
         };
+    }
+
+    async function saveData() {
+        const data = getFormData();
         if(!data.name) return alert("الاسم مطلوب");
         const res = await fetch(`${SB_URL}/rest/v1/hospital_assets`, { method: 'POST', headers: HEADERS, body: JSON.stringify(data) });
         if(res.ok) { alert("✅ تم الحفظ"); fetchDataFromSupabase(); resetInputs(); }
@@ -232,17 +196,67 @@
         document.querySelectorAll('input').forEach(i => i.value = '');
         document.getElementById('qty').value = '1';
         document.getElementById('photo-preview').style.display = 'none';
+        document.getElementById('photo-preview').src = '';
         document.getElementById('btn-save').style.display = 'flex';
         document.getElementById('btn-update').style.display = 'none';
     }
 
+    // الدالة المحدثة للتصدير
     async function exportToExcel() {
+        if (allAssets.length === 0) return alert("لا توجد بيانات لتصديرها");
+        
         const workbook = new ExcelJS.Workbook();
-        const sheet = workbook.addWorksheet('جرد');
-        sheet.columns = [{header:'الصنف', key:'name'}, {header:'القسم', key:'dept'}, {header:'الحالة', key:'status'}];
-        allAssets.forEach(item => sheet.addRow(item));
+        const sheet = workbook.addWorksheet('جرد المستشفى');
+
+        // تعريف الأعمدة
+        sheet.columns = [
+            { header: 'الصورة', key: 'image_url', width: 15 },
+            { header: 'اسم الصنف', key: 'name', width: 25 },
+            { header: 'القسم', key: 'dept', width: 15 },
+            { header: 'الكمية', key: 'qty', width: 10 },
+            { header: 'الباركود', key: 'barcode', width: 20 },
+            { header: 'الحالة', key: 'status', width: 15 }
+        ];
+
+        // إضافة البيانات مع الصور
+        for (let i = 0; i < allAssets.length; i++) {
+            const item = allAssets[i];
+            const rowIndex = i + 2; // +1 للعنوان و +1 لأن البداية من 1
+            
+            const row = sheet.addRow({
+                name: item.name,
+                dept: item.dept,
+                qty: item.qty,
+                barcode: item.barcode,
+                status: item.status
+            });
+            
+            row.height = 60; // ضبط ارتفاع الصف ليتناسب مع الصورة
+
+            // معالجة الصورة إذا كانت موجودة (Base64)
+            if (item.image_url && item.image_url.startsWith('data:image')) {
+                try {
+                    const imageId = workbook.addImage({
+                        base64: item.image_url,
+                        extension: 'jpeg',
+                    });
+                    sheet.addImage(imageId, {
+                        tl: { col: 0, row: i + 1 },
+                        ext: { width: 80, height: 70 }
+                    });
+                } catch (err) {
+                    console.error("خطأ في إضافة الصورة للإكسل", err);
+                }
+            }
+        }
+
+        // تنسيق العناوين
+        sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFF' } };
+        sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '2C3E50' } };
+        sheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
         const buffer = await workbook.xlsx.writeBuffer();
-        saveAs(new Blob([buffer]), "Inventory.xlsx");
+        saveAs(new Blob([buffer]), `Hospital_Inventory_${new Date().toLocaleDateString()}.xlsx`);
     }
 </script>
 </body>
