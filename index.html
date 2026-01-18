@@ -3,167 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام جرد المستشفى الذكي المطور</title>
+    <title>نظام جرد المستشفى الذكي - تصدير الصور</title>
+    
     <script src="https://unpkg.com/html5-qrcode"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <style>
-        :root { --primary: #2563eb; --secondary: #10b981; --accent: #8b5cf6; --danger: #ef4444; --light: #f8fafc; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--light); margin: 0; padding: 15px; direction: rtl; }
-        .container { max-width: 700px; margin: auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
-        h2 { text-align: center; color: var(--primary); margin-bottom: 20px; border-bottom: 2px solid var(--light); padding-bottom: 10px; }
-        
-        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        :root { --primary: #2c3e50; --secondary: #3498db; --success: #27ae60; --light: #f4f7f6; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: var(--light); margin: 0; padding: 15px; direction: rtl; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: var(--primary); border-bottom: 2px solid var(--secondary); padding-bottom: 10px; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px; }
         .full-width { grid-column: span 2; }
-        
-        .group { margin-bottom: 15px; }
-        label { display: block; font-weight: bold; margin-bottom: 5px; color: #444; font-size: 14px; }
-        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; }
-        
-        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
-        button { width: 100%; padding: 15px; border: none; border-radius: 10px; color: white; font-weight: bold; cursor: pointer; font-size: 15px; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px; }
-        
-        .btn-scan { background: var(--primary); }
-        .btn-camera { background: var(--accent); } /* زر التصوير */
-        .btn-save { background: var(--secondary); grid-column: span 2; font-size: 18px; margin-top: 5px; }
-        .btn-clear { background: #64748b; }
-        .btn-excel { background: #1d6f42; grid-column: span 2; } /* زر الإكسل */
-        
-        #reader, #camera-preview { width: 100%; border-radius: 10px; margin-top: 10px; display: none; border: 2px dashed var(--primary); background: #000; }
-        #photo-output { width: 100px; height: 100px; object-fit: cover; border-radius: 10px; display: none; margin-top: 10px; border: 2px solid var(--accent); }
-        
-        .table-container { margin-top: 25px; overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; }
-        th, td { padding: 12px; border: 1px solid #eee; text-align: center; font-size: 14px; }
+        label { font-weight: bold; font-size: 13px; color: #555; display: block; margin-bottom: 5px; }
+        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button { padding: 15px; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: bold; transition: 0.3s; }
+        .btn-scan { background: var(--secondary); }
+        .btn-photo { background: #8e44ad; }
+        .btn-excel { background: var(--success); grid-column: span 2; }
+        .btn-save { background: var(--primary); grid-column: span 2; font-size: 18px; }
+        #reader, #camera-preview { width: 100%; border-radius: 10px; display: none; margin-top: 10px; background: #000; }
+        #photo-preview { width: 100px; height: 100px; object-fit: cover; border-radius: 10px; display: none; margin: 10px auto; border: 2px solid var(--secondary); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #eee; padding: 10px; text-align: center; font-size: 13px; }
         th { background: var(--primary); color: white; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2><i class="fas fa-hospital-alt"></i> نظام جرد العهدة المطور</h2>
+    <h2>🏥 نظام جرد العهدة (نسخة الصور)</h2>
 
     <div class="form-grid">
-        <div class="group full-width">
-            <label>اسم الصنف (name)</label>
-            <input type="text" id="name" placeholder="مثلاً: جهاز تخطيط قلب">
+        <div class="full-width">
+            <label>اسم الصنف</label>
+            <input type="text" id="name" placeholder="جهاز تخطيط قلب">
         </div>
-
-        <div class="group">
-            <label>القسم (dept)</label>
-            <input type="text" id="dept" placeholder="ادخل القسم يدوياً">
-        </div>
-
-        <div class="group">
-            <label>الكمية (qty)</label>
-            <input type="number" id="qty" value="1">
-        </div>
-
-        <div class="group">
-            <label>الحالة (status)</label>
+        <div><label>القسم</label><input type="text" id="dept"></div>
+        <div><label>الكمية</label><input type="number" id="qty" value="1"></div>
+        <div>
+            <label>الحالة</label>
             <select id="status">
-                <option value="ممتازة">ممتازة</option>
-                <option value="تحتاج صيانة">تحتاج صيانة</option>
-                <option value="تالف">تالف</option>
+                <option>جديد</option><option>مستعمل</option><option>صيانة</option>
             </select>
         </div>
-
-        <div class="group">
-            <label>الباركود (barcode)</label>
-            <input type="text" id="barcode" placeholder="امسح بالكاميرا أو اكتب">
-        </div>
+        <div><label>الباركود</label><input type="text" id="barcode"></div>
     </div>
 
     <div id="reader"></div>
     <video id="camera-preview" autoplay playsinline></video>
-    <img id="photo-output" alt="معاينة الصورة">
+    <center><img id="photo-preview"></center>
 
     <div class="btn-group">
         <button class="btn-scan" onclick="startScanner()"><i class="fas fa-barcode"></i> مسح باركود</button>
-        <button class="btn-camera" onclick="takeItemPhoto()"><i class="fas fa-camera"></i> تصوير الصنف</button>
-        <button class="btn-clear" onclick="clearFields()"><i class="fas fa-eraser"></i> مسح الحقول</button>
-        <button class="btn-excel" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> تصدير الجدول إلى Excel</button>
-        <button class="btn-save" onclick="saveData()"><i class="fas fa-cloud-upload-alt"></i> حفظ في السحابة</button>
+        <button class="btn-photo" onclick="takePhoto()"><i class="fas fa-camera"></i> تصوير الصنف</button>
+        <button class="btn-excel" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> تصدير إكسل مع الصور</button>
+        <button class="btn-save" onclick="saveData()"><i class="fas fa-save"></i> حفظ في السحابة</button>
     </div>
 
-    <div class="table-container">
-        <table id="inventoryTable">
-            <thead>
-                <tr>
-                    <th>الصنف</th>
-                    <th>القسم</th>
-                    <th>الكمية</th>
-                    <th>الحالة</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-    </div>
+    <table id="inventoryTable">
+        <thead><tr><th>الصورة</th><th>الصنف</th><th>القسم</th><th>الحالة</th></tr></thead>
+        <tbody></tbody>
+    </table>
 </div>
 
 <script>
-    // --- بيانات الربط (نفس بياناتك السابقة) ---
     const SB_URL = "https://brzplwntwtxyadocnitj.supabase.co";
     const SB_KEY = "sb_publishable_nfhRP3sxdMfF1MpObXpjWA_UpID0PC3";
 
     let html5QrCode;
     let cameraStream;
-    let tableData = []; // لتخزين البيانات من أجل الإكسل
+    let sessionData = []; // لتخزين البيانات محلياً للتصدير
 
-    // 1. وظيفة الباركود
+    // 1. مسح الباركود
     function startScanner() {
         const reader = document.getElementById('reader');
         reader.style.display = 'block';
         html5QrCode = new Html5Qrcode("reader");
-        html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, 
-            (decodedText) => {
-                document.getElementById('barcode').value = decodedText;
-                stopScanner();
-                alert("تم التعرف على الباركود: " + decodedText);
-            }
-        ).catch(err => alert("يرجى السماح بالكاميرا"));
+        html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => {
+            document.getElementById('barcode').value = text;
+            html5QrCode.stop();
+            reader.style.display = 'none';
+        }).catch(err => alert("يرجى السماح بالكاميرا"));
     }
 
-    function stopScanner() {
-        if (html5QrCode) {
-            html5QrCode.stop().then(() => { document.getElementById('reader').style.display = 'none'; });
-        }
-    }
-
-    // 2. وظيفة تصوير الصنف (جديد)
-    async function takeItemPhoto() {
+    // 2. التقاط صورة الصنف
+    async function takePhoto() {
         const video = document.getElementById('camera-preview');
-        const img = document.getElementById('photo-output');
-
+        const img = document.getElementById('photo-preview');
         if (video.style.display === 'none' || !video.style.display) {
             video.style.display = 'block';
             cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
             video.srcObject = cameraStream;
         } else {
             const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            img.src = canvas.toDataURL('image/jpeg');
+            canvas.width = 400; // حجم مناسب للإكسل
+            canvas.height = (video.videoHeight / video.videoWidth) * 400;
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            img.src = canvas.toDataURL('image/jpeg', 0.7);
             img.style.display = 'block';
-            
-            // إيقاف الكاميرا
-            cameraStream.getTracks().forEach(track => track.stop());
+            cameraStream.getTracks().forEach(t => t.stop());
             video.style.display = 'none';
         }
     }
 
-    // 3. وظيفة تصدير الإكسل (جديد)
-    function exportToExcel() {
-        if (tableData.length === 0) { alert("لا توجد بيانات لتصديرها!"); return; }
-        const ws = XLSX.utils.json_to_sheet(tableData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "الجرد");
-        XLSX.writeFile(wb, "جرد_المستشفى.xlsx");
-    }
-
-    // 4. وظيفة الحفظ (نفس منطقك السابق مع إضافة الصورة)
+    // 3. الحفظ في سوبابيس
     async function saveData() {
         const data = {
             name: document.getElementById('name').value,
@@ -171,52 +118,77 @@
             qty: parseInt(document.getElementById('qty').value),
             status: document.getElementById('status').value,
             barcode: document.getElementById('barcode').value,
-            image_url: document.getElementById('photo-output').src || null, // حفظ الصورة كـ Base64
+            image_url: document.getElementById('photo-preview').src || null,
             is_deleted: false
         };
 
-        if (!data.name || !data.dept) { alert("يرجى إدخال الاسم والقسم!"); return; }
+        if(!data.name || !data.barcode) return alert("الاسم والباركود مطلوبان!");
 
         try {
-            const response = await fetch(`${SB_URL}/rest/v1/hospital_assets`, {
+            const res = await fetch(`${SB_URL}/rest/v1/hospital_assets`, {
                 method: 'POST',
-                headers: {
-                    'apikey': SB_KEY,
-                    'Authorization': `Bearer ${SB_KEY}`,
-                    'Content-Type': 'application/json',
-                    'Prefer': 'return=minimal'
-                },
+                headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
 
-            if (response.ok) {
+            if (res.ok) {
                 alert("✅ تم الحفظ بنجاح!");
-                tableData.push({ "الاسم": data.name, "القسم": data.dept, "الكمية": data.qty, "الحالة": data.status, "الباركود": data.barcode });
-                addToTable(data);
-                clearFields();
+                sessionData.push(data); // أضف للذاكرة للتصدير
+                updateTable(data);
+                clearInputs();
             } else {
-                const errorData = await response.json();
-                alert("❌ فشل: " + errorData.message);
+                alert("❌ خطأ: قد يكون الباركود مكرر!");
             }
-        } catch (error) {
-            alert("❌ خطأ في الاتصال!");
+        } catch (e) { alert("❌ خطأ اتصال"); }
+    }
+
+    // 4. التصدير الحقيقي لملف الإكسل مع الصور (ExcelJS)
+    async function exportToExcel() {
+        if (sessionData.length === 0) return alert("لا توجد بيانات جديدة لتصديرها!");
+
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('جرد المستشفى');
+
+        sheet.columns = [
+            { header: 'الصورة', key: 'img', width: 15 },
+            { header: 'اسم الصنف', key: 'name', width: 25 },
+            { header: 'الباركود', key: 'barcode', width: 20 },
+            { header: 'القسم', key: 'dept', width: 15 },
+            { header: 'الكمية', key: 'qty', width: 10 },
+            { header: 'الحالة', key: 'status', width: 15 }
+        ];
+
+        for (let i = 0; i < sessionData.length; i++) {
+            const item = sessionData[i];
+            const row = sheet.addRow(item);
+            row.height = 70; // ارتفاع الصف ليناسب الصورة
+
+            if (item.image_url && item.image_url.startsWith('data:image')) {
+                const imgId = workbook.addImage({
+                    base64: item.image_url,
+                    extension: 'jpeg',
+                });
+                sheet.addImage(imgId, {
+                    tl: { col: 0, row: i + 1 },
+                    ext: { width: 80, height: 80 }
+                });
+            }
         }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        saveAs(new Blob([buffer]), `Hospital_Inventory_${new Date().toLocaleDateString()}.xlsx`);
     }
 
-    function addToTable(item) {
-        const table = document.getElementById('inventoryTable').getElementsByTagName('tbody')[0];
-        const row = table.insertRow(0);
-        row.innerHTML = `<td>${item.name}</td><td>${item.dept}</td><td>${item.qty}</td><td>${item.status}</td>`;
+    function updateTable(d) {
+        const row = `<tr><td><img src="${d.image_url}" width="50"></td><td>${d.name}</td><td>${d.dept}</td><td>${d.status}</td></tr>`;
+        document.querySelector("#inventoryTable tbody").innerHTML += row;
     }
 
-    function clearFields() {
+    function clearInputs() {
         document.getElementById('name').value = '';
-        document.getElementById('dept').value = '';
         document.getElementById('barcode').value = '';
-        document.getElementById('qty').value = '1';
-        document.getElementById('photo-output').style.display = 'none';
+        document.getElementById('photo-preview').style.display = 'none';
     }
 </script>
-
 </body>
 </html>
